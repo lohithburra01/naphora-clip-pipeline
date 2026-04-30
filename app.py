@@ -406,4 +406,5 @@ if __name__ == "__main__":
         show_error=True,
         max_file_size="500mb",
         theme=gr.themes.Soft(),
+        share=True,  # Public *.gradio.live tunnel valid for 72 hours
     )
