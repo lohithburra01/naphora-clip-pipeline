@@ -17,21 +17,111 @@ End-to-end autonomous: upload, click Generate, get a timeline of every cut-able 
 
 ---
 
-## How to run
+## How to run — step-by-step
 
+If you have Python 3.10+ and ffmpeg already installed, skip to "Run the pipeline" below. Otherwise do the prerequisites first.
+
+### Prerequisites
+
+#### 1) Install Python 3.10 or newer
+
+Check if you already have it:
+```bash
+python --version
+```
+If you see `Python 3.10.x` or higher, you're good. Otherwise:
+- **Windows:** download from https://www.python.org/downloads/ → run installer → **check "Add Python to PATH"** during install.
+- **macOS:** `brew install python@3.11` (install Homebrew first from brew.sh if you don't have it)
+- **Linux (Ubuntu/Debian):** `sudo apt update && sudo apt install python3.11 python3.11-venv python3-pip`
+
+#### 2) Install ffmpeg
+
+Check if you already have it:
+```bash
+ffmpeg -version
+```
+If you see version info, you're good. Otherwise:
+- **Windows:**
+  - Easiest: `winget install Gyan.FFmpeg` (Windows 10+ has winget built in)
+  - Or download from https://www.gyan.dev/ffmpeg/builds/ → unzip → add the `bin/` folder to your PATH environment variable.
+- **macOS:** `brew install ffmpeg`
+- **Linux:** `sudo apt install ffmpeg` (Ubuntu/Debian) or `sudo dnf install ffmpeg` (Fedora)
+
+#### 3) Get a free Gemini API key (30 seconds)
+
+1. Go to https://aistudio.google.com/apikey
+2. Sign in with any Google account.
+3. Click **"Create API key"** → choose any project (or create one).
+4. Copy the key (starts with `AIza...`). You'll paste it in step 5 below.
+
+### Run the pipeline
+
+#### 4) Get the code
+
+If you have git:
 ```bash
 git clone https://github.com/lohithburra01/naphora-clip-pipeline.git
 cd naphora-clip-pipeline
-python -m venv .venv
-.venv/Scripts/activate          # macOS/Linux: source .venv/bin/activate
-pip install -r requirements.txt
-cp .env.example .env             # then paste your Gemini key
-python app.py                    # opens http://127.0.0.1:7860
 ```
 
-Get a free Gemini API key at https://aistudio.google.com/apikey. The `.env` is the default source, but the UI also has an optional API key textbox so reviewers can paste their own without editing files.
+If you don't have git: download the ZIP from the GitHub repo's green "Code" button → "Download ZIP" → unzip → open a terminal IN the unzipped folder.
 
-System requirements: Python 3.10+, ffmpeg + ffprobe on PATH (https://ffmpeg.org/download.html). On first run faster-whisper downloads its tiny.en model (~75 MB).
+#### 5) Install Python dependencies (one-time, ~2 minutes)
+
+```bash
+python -m venv .venv
+```
+Then activate the virtual environment:
+- **Windows (PowerShell):** `.venv\Scripts\Activate.ps1`
+- **Windows (cmd):** `.venv\Scripts\activate.bat`
+- **macOS/Linux:** `source .venv/bin/activate`
+
+You should see `(.venv)` at the start of your terminal prompt now. Then:
+```bash
+pip install -r requirements.txt
+```
+This installs Gradio, Gemini SDK, faster-whisper, ffmpeg-python, etc. Takes ~2 min on first run.
+
+#### 6) Add your Gemini API key
+
+Either:
+- **Easy way:** skip this step. The UI has a built-in textbox to paste the key when you open the app.
+- **Permanent way:** copy `.env.example` to `.env` and paste your key:
+  ```bash
+  cp .env.example .env
+  ```
+  Then open `.env` in any text editor and paste your key after `GEMINI_API_KEY=`.
+
+#### 7) Launch the app
+
+```bash
+python app.py
+```
+
+You'll see something like:
+```
+Running on local URL:  http://127.0.0.1:7860
+Running on public URL: https://xxxxx.gradio.live
+```
+
+Open **http://127.0.0.1:7860** in your browser. The app is live.
+
+#### 8) Use it
+
+1. Click the video upload box → pick a gameplay clip (≤500 MB)
+2. Type the game name (e.g. `Valorant`)
+3. *(Optional)* paste your Gemini API key in the textbox
+4. *(Optional)* type the player's IGN if it's personal gameplay
+5. Click **Generate Clips**
+6. Wait ~30-60 seconds (Gemini analysis + 4 parallel renders)
+7. Output: timeline plot of every detected event, ranked event table, 4 video players (top 2 events × 2 variants), copy-pasteable TikTok caption, viral score
+
+### Common issues
+
+- **`ffmpeg not found on PATH`** — finish step 2 above. On Windows you may need to restart your terminal after editing PATH.
+- **Whisper model download taking forever on first run** — that's the ~75 MB `tiny.en` faster-whisper model downloading. One-time, then cached.
+- **Gemini 503 / quota errors** — pipeline auto-retries across a fallback chain of 4 models; if it still fails it shows a clear UI banner. Wait 30-60 sec and click Generate again.
+- **"externally-managed-environment" error on pip install (Linux)** — make sure your venv is activated; the `(.venv)` prefix should be visible in your prompt.
 
 ---
 
