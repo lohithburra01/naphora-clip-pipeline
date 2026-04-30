@@ -436,11 +436,18 @@ def real_analyze(
     game_name: str,
     player_ign: str = "",
     work_dir: Path | None = None,
+    api_key: str | None = None,
 ) -> dict[str, Any]:
-    """Production analysis path. Raises on any failure (caller should catch and fall back)."""
-    api_key = os.environ.get("GEMINI_API_KEY", "").strip()
+    """Production analysis path. Raises on any failure (caller should catch and fall back).
+
+    api_key: optional override; if not given, falls back to GEMINI_API_KEY env var.
+    """
+    if api_key is None or not api_key.strip():
+        api_key = os.environ.get("GEMINI_API_KEY", "").strip()
+    else:
+        api_key = api_key.strip()
     if not api_key:
-        raise RuntimeError("GEMINI_API_KEY not set")
+        raise RuntimeError("GEMINI_API_KEY not set (no env var and no key passed in)")
 
     if work_dir is None:
         work_dir = Path("runs") / "analyze-tmp"
@@ -547,13 +554,14 @@ def analyze(
     game_name: str,
     player_ign: str = "",
     work_dir: Path | None = None,
+    api_key: str | None = None,
 ) -> tuple[dict[str, Any], str]:
     """Try real_analyze, fall back to fake_analyze.
 
     Returns (analysis, source). source in {"gemini", "fake"}.
     """
     try:
-        return real_analyze(video_path, game_name, player_ign, work_dir), "gemini"
+        return real_analyze(video_path, game_name, player_ign, work_dir, api_key=api_key), "gemini"
     except Exception as e:
         print(f"[analyze] real_analyze failed, falling back to fake_analyze: {type(e).__name__}: {e}")
         return fake_analyze(video_path, game_name), "fake"

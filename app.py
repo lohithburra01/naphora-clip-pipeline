@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import json
 import uuid
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 import gradio as gr
@@ -149,6 +150,7 @@ def process(
     video_file: str | None,
     game_name: str,
     player_ign: str,
+    api_key_override: str,
     progress=gr.Progress(),
 ):
     """Run the pipeline: analyze → render top 2 events × 2 variants = 4 clips."""
@@ -167,6 +169,7 @@ def process(
         game_name=game_name.strip(),
         player_ign=player_ign.strip() if player_ign else "",
         work_dir=run_dir,
+        api_key=(api_key_override.strip() if api_key_override else None),
     )
 
     progress(0.40, desc="Extracting word-level timestamps for karaoke...")
@@ -196,11 +199,12 @@ def process(
     )
 
     rendered_paths: list[str | None] = [None, None, None, None]
-    progress_increments = [0.55, 0.70, 0.82, 0.94]
 
+    # Build render-job specs first (cheap), then dispatch all 4 in parallel
+    # via ThreadPoolExecutor. ffmpeg is its own subprocess so OS-level
+    # parallelism kicks in cleanly. Hits the brief's parallel-processing bonus.
+    render_jobs: list[tuple[int, dict]] = []
     for ev_idx, event in enumerate(top_events):
-        # Defensive: derive start/end from peak_frame_index if event dict is
-        # missing them (some fallback paths used to omit these keys).
         if "start_sec" in event and "end_sec" in event:
             seg_start = float(event["start_sec"])
             seg_end = float(event["end_sec"])
@@ -213,49 +217,57 @@ def process(
             slot = ev_idx * 2 + var_idx
             out_path = run_dir / f"event{ev_idx+1}_variant_{style.lower()}.mp4"
 
-            progress(
-                progress_increments[slot],
-                desc=f"Rendering Event {ev_idx+1} · Variant {style}...",
-            )
-
-            # Per-event hooks (Gemini gives unique hook_a / hook_b for each
-            # event in the events array; fall back to top-level if missing).
             event_hook_a = event.get("hook_a") or analysis["hook_a"]
             event_hook_b = event.get("hook_b") or analysis["hook_b"]
 
             if style == "A" and ev_idx == 0:
-                # Top event Variant A uses Gemini's curated beats (hype phrases)
                 hook = event_hook_a
                 caps = analysis["captions"]
                 wds = None
             elif style == "A":
-                # Secondary events Variant A: phrase-chunked karaoke
-                # (we don't have per-event Gen-Z beats yet — use commentary)
                 hook = event_hook_a
                 caps = None
                 wds = window_words if window_words else None
                 if not wds:
                     caps = analysis["captions"]
             else:
-                # All Variant B: karaoke phrases from commentary
                 hook = event_hook_b
                 caps = analysis["captions"] if not window_words else None
                 wds = window_words if window_words else None
 
-            try:
-                render_variant(
-                    input_path=video_file,
-                    segment=(seg_start, seg_end),
-                    hook=hook,
-                    captions=caps,
-                    words=wds,
-                    output_path=str(out_path),
-                    style=style,
-                )
-                rendered_paths[slot] = str(out_path)
-            except Exception as e:
-                print(f"[render] event {ev_idx+1} variant {style} failed: {e}")
+            render_jobs.append((slot, {
+                "input_path": video_file,
+                "segment": (seg_start, seg_end),
+                "hook": hook,
+                "captions": caps,
+                "words": wds,
+                "output_path": str(out_path),
+                "style": style,
+            }))
+
+    def _do_render(slot: int, args: dict) -> tuple[int, str | None, Exception | None]:
+        try:
+            render_variant(**args)
+            return slot, args["output_path"], None
+        except Exception as exc:
+            return slot, None, exc
+
+    progress(0.55, desc=f"Rendering {len(render_jobs)} variants in parallel...")
+    with ThreadPoolExecutor(max_workers=min(4, len(render_jobs))) as pool:
+        futures = [pool.submit(_do_render, slot, args) for slot, args in render_jobs]
+        completed = 0
+        for fut in as_completed(futures):
+            slot, path, err = fut.result()
+            if err is not None:
+                print(f"[render] slot {slot} failed: {err}")
                 rendered_paths[slot] = None
+            else:
+                rendered_paths[slot] = path
+            completed += 1
+            progress(
+                0.55 + (completed / max(1, len(render_jobs))) * 0.4,
+                desc=f"Rendered {completed}/{len(render_jobs)} variants...",
+            )
 
     progress(1.0, desc="Done")
 
@@ -333,6 +345,12 @@ with gr.Blocks(title="Naphora Clip Pipeline", css="""
                 placeholder="In-game name to feature in captions",
                 value="",
             )
+            api_key_in = gr.Textbox(
+                label="Gemini API key (optional — overrides .env for this run)",
+                placeholder="Paste your free Gemini key from aistudio.google.com/apikey",
+                type="password",
+                value="",
+            )
             submit = gr.Button("Generate Clips", variant="primary", size="lg")
         with gr.Column(scale=2):
             score_md = gr.Markdown()
@@ -369,7 +387,7 @@ with gr.Blocks(title="Naphora Clip Pipeline", css="""
 
     submit.click(
         process,
-        inputs=[video_in, game_in, ign_in],
+        inputs=[video_in, game_in, ign_in, api_key_in],
         outputs=[
             timeline_plot,
             events_df,
