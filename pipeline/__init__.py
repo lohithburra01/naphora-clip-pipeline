@@ -1,0 +1,1 @@
+"""Naphora clip pipeline."""
