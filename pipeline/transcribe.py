@@ -179,3 +179,32 @@ def transcript_to_text_block(
     if len(block) > max_chars:
         block = block[:max_chars] + "\n... [transcript truncated]"
     return block
+
+
+def words_to_text_block(
+    words: list[TranscriptWord],
+    max_chars: int = 4000,
+    chunk_seconds: float = 4.0,
+) -> str:
+    """Group word-level timestamps into pseudo-segments and format as a
+    commentary block. Lets the pipeline run whisper ONCE with word_timestamps
+    and derive both Variant B karaoke captions AND Gemini's commentary track
+    from the same result. Halves whisper compute on every run."""
+    if not words:
+        return ""
+    chunks: list[tuple[float, list[str]]] = []
+    cur_start = words[0].start
+    cur_words: list[str] = []
+    for w in words:
+        if w.start - cur_start > chunk_seconds and cur_words:
+            chunks.append((cur_start, cur_words))
+            cur_start = w.start
+            cur_words = []
+        cur_words.append(w.text)
+    if cur_words:
+        chunks.append((cur_start, cur_words))
+    lines = [f"[{t:.1f}s] {' '.join(ws)}" for t, ws in chunks]
+    block = "\n".join(lines)
+    if len(block) > max_chars:
+        block = block[:max_chars] + "\n... [transcript truncated]"
+    return block

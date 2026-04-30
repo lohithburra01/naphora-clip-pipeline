@@ -437,6 +437,7 @@ def real_analyze(
     player_ign: str = "",
     work_dir: Path | None = None,
     api_key: str | None = None,
+    transcript_block: str | None = None,
 ) -> dict[str, Any]:
     """Production analysis path. Raises on any failure (caller should catch and fall back).
 
@@ -458,8 +459,11 @@ def real_analyze(
         raise RuntimeError(f"Too few frames extracted: {len(samples)} (need >= 4)")
     interval = duration / max(1, len(samples))
 
-    transcript_segments = transcribe(video_path)
-    transcript_block = transcript_to_text_block(transcript_segments, max_chars=4000)
+    # If the caller already ran whisper (and derived the text block), reuse it
+    # to avoid a second whisper pass on the same audio. Otherwise transcribe.
+    if transcript_block is None:
+        transcript_segments = transcribe(video_path)
+        transcript_block = transcript_to_text_block(transcript_segments, max_chars=4000)
 
     prompt = _build_prompt(
         n_frames=len(samples),
@@ -555,13 +559,17 @@ def analyze(
     player_ign: str = "",
     work_dir: Path | None = None,
     api_key: str | None = None,
+    transcript_block: str | None = None,
 ) -> tuple[dict[str, Any], str]:
     """Try real_analyze, fall back to fake_analyze.
 
     Returns (analysis, source). source in {"gemini", "fake"}.
     """
     try:
-        return real_analyze(video_path, game_name, player_ign, work_dir, api_key=api_key), "gemini"
+        return real_analyze(
+            video_path, game_name, player_ign, work_dir,
+            api_key=api_key, transcript_block=transcript_block,
+        ), "gemini"
     except Exception as e:
         print(f"[analyze] real_analyze failed, falling back to fake_analyze: {type(e).__name__}: {e}")
         return fake_analyze(video_path, game_name), "fake"

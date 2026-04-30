@@ -30,7 +30,7 @@ from dotenv import load_dotenv
 
 from pipeline.analyze import analyze
 from pipeline.render import render_variant
-from pipeline.transcribe import transcribe_words, TranscriptWord
+from pipeline.transcribe import transcribe_words, words_to_text_block, TranscriptWord
 
 load_dotenv()
 
@@ -163,17 +163,23 @@ def process(
     run_dir = RUNS_DIR / run_id
     run_dir.mkdir(parents=True, exist_ok=True)
 
-    progress(0.05, desc="Analyzing frames + transcribing audio with Gemini + Whisper...")
+    # Single whisper pass with word_timestamps=True. We derive BOTH the
+    # text block (Gemini's commentary track) AND the per-word timing
+    # (Variant B karaoke) from the same result. Avoids running whisper
+    # twice on the same audio (was ~60-120s wasted on a 3-4 min clip).
+    progress(0.05, desc="Transcribing audio commentary (whisper)...")
+    all_words = transcribe_words(video_file)
+    transcript_block = words_to_text_block(all_words, max_chars=4000)
+
+    progress(0.20, desc="Analyzing frames with Gemini Flash...")
     analysis, source = analyze(
         video_path=video_file,
         game_name=game_name.strip(),
         player_ign=player_ign.strip() if player_ign else "",
         work_dir=run_dir,
         api_key=(api_key_override.strip() if api_key_override else None),
+        transcript_block=transcript_block,
     )
-
-    progress(0.40, desc="Extracting word-level timestamps for karaoke...")
-    all_words = transcribe_words(video_file)
 
     events = analysis.get("events", []) or []
     # Pick the top two events. If only one was detected, second slot stays None.
