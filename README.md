@@ -4,6 +4,10 @@
 
 End-to-end autonomous: upload, click Generate, get a timeline of every cut-able event the AI detected, the ranked event table, and four polished short-form clips ready to post. Multi-modal under the hood — Gemini Flash for vision + faster-whisper for audio commentary + ffmpeg for rendering. Designed for the Naphora Games Group Prompt/AI take-home test (2026-04-30).
 
+**Sample run included:** the source gameplay video (FNC vs FUT, VCT EMEA 2026 Kickoff Playoffs Map 3) is hosted on [Google Drive](https://drive.google.com/file/d/1sRvDxC1ep9xdcAQeUnvAuUurT9PNUsN1/view?usp=sharing) (314 MB, too large for git), and `output clips/` in this repo holds the four clips it produced — review the quality without installing anything, or download the source and run it yourself end-to-end.
+
+**Game-agnostic:** the prompt is not Valorant-specific. The game name is a runtime input and the prompt deliberately omits per-game UI cues so the same vision pipeline generalizes across titles. Event vocabulary (kill / clutch / ace / multi-kill / round-win) leans FPS / round-based shooter; extending to other genres is a vocabulary edit in `prompts/vision_analysis.md`. Rationale in §5.6 of that doc.
+
 ---
 
 ## What it does
@@ -208,6 +212,7 @@ naphora-clip-pipeline/
 ├── .env.example                 ← template for the Gemini API key
 ├── .gitignore
 ├── app.py                       ← Gradio entrypoint
+├── output clips/                ← the 4 clips the sample run produced (top 2 events × 2 variants); source video on Drive (link in callout above)
 ├── pipeline/
 │   ├── analyze.py               ← Gemini orchestration + validation + fallback chain
 │   ├── extract.py               ← adaptive frame extraction (ffmpeg)
